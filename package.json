@@ -1,0 +1,16 @@
+{
+  "name": "trustverifier",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "genlayer-js": "^1.1.8",
+    "vite": "^5.4.19"
+  }
+}
