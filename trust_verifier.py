@@ -2,76 +2,139 @@
 
 from genlayer import *
 import typing
+import json
+from dataclasses import dataclass
 
 
-class TrustVerifier(gl.Contract):
+@allow_storage
+@dataclass
+class Verification:
+    id: u256
     claim: str
     source_url: str
     result: str
     status: str
     verified_at: str
 
+
+class TrustVerifier(gl.Contract):
+    verifications: DynArray[Verification]
+    next_id: u256
+
     def __init__(self):
-        self.claim = ""
-        self.source_url = ""
-        self.result = ""
-        self.status = "NOT_VERIFIED"
-        self.verified_at = ""
+        self.next_id = u256(1)
 
     @gl.public.write
     def verify_claim(self, claim: str, source_url: str) -> typing.Any:
-        self.claim = claim
-        self.source_url = source_url
-        self.status = "VERIFYING"
-        self.result = ""
+        verification_id = self.next_id
+        self.next_id += u256(1)
 
         def evaluate_claim() -> str:
             response = gl.nondet.web.get(source_url)
             source_text = response.body.decode("utf-8")
 
             prompt = f"""
-You are a claim verification system.
+You are a reliable source verification system.
 
 CLAIM:
 {claim}
 
-SOURCE:
+SOURCE URL:
+{source_url}
+
+SOURCE CONTENT:
 {source_text}
 
-Determine whether the source supports the claim.
+Determine whether the source content provides sufficient evidence
+to support the claim.
 
-Return exactly one word:
-SUPPORTED
+Return JSON only:
+{{
+  "result": "SUPPORTED"
+}}
+
 or
-NOT_SUPPORTED
+
+{{
+  "result": "NOT_SUPPORTED"
+}}
+
+Rules:
+- Use SUPPORTED only when the source clearly supports the claim.
+- Use NOT_SUPPORTED when the source does not provide sufficient evidence.
+- Do not use any other result.
 """
 
-            return gl.nondet.exec_prompt(prompt).strip()
+            response = gl.nondet.exec_prompt(
+                prompt,
+                response_format="json"
+            )
 
-        self.result = gl.eq_principle.prompt_comparative(
+            if isinstance(response, dict):
+                result = response.get("result", "NOT_SUPPORTED")
+            else:
+                try:
+                    parsed = json.loads(response)
+                    result = parsed.get("result", "NOT_SUPPORTED")
+                except Exception:
+                    result = "NOT_SUPPORTED"
+
+            result = str(result).strip().upper()
+
+            if result != "SUPPORTED":
+                result = "NOT_SUPPORTED"
+
+            return result
+
+        result = gl.eq_principle.prompt_comparative(
             evaluate_claim,
             principle="""
-The verification result must be exactly SUPPORTED or NOT_SUPPORTED.
+The verification result must be exactly one of:
+SUPPORTED
+NOT_SUPPORTED
 
-SUPPORTED means the source provides sufficient evidence supporting
-the claim.
+The validators must agree on the result.
 
-NOT_SUPPORTED means the source does not provide sufficient evidence
-supporting the claim.
+SUPPORTED means the source provides sufficient evidence
+to support the claim.
+
+NOT_SUPPORTED means the source does not provide sufficient
+evidence to support the claim.
 """
         )
 
-        self.status = self.result
-        self.verified_at = gl.message_raw["datetime"]
+        result = str(result).strip().upper()
 
-        return self.result
+        if result != "SUPPORTED":
+            result = "NOT_SUPPORTED"
+
+        verification = Verification(
+            id=verification_id,
+            claim=claim,
+            source_url=source_url,
+            result=result,
+            status=result,
+            verified_at=gl.message_raw["datetime"],
+        )
+
+        self.verifications.append(verification)
+
+        return {
+            "id": verification_id,
+            "result": result,
+            "status": result,
+        }
 
     @gl.public.view
-    def get_verification(self) -> dict:
+    def get_verifications(self) -> list:
+        return list(self.verifications)
+
+    @gl.public.view
+    def get_verification(self, verification_id: u256) -> typing.Any:
+        for verification in self.verifications:
+            if verification.id == verification_id:
+                return verification
+
         return {
-            "claim": self.claim,
-            "source_url": self.source_url,
-            "result": self.result,
-            "status": self.status,
-            "verified_at": self.verified_at,
+            "error": "Verification not found"
         }
