@@ -39,6 +39,10 @@ window.verifyClaim = async function () {
             provider: window.ethereum
         });
 
+        resultText.textContent = "Connecting to GenLayer StudioNet...";
+
+        await client.connect("studionet");
+
         resultText.textContent =
             "Submitting verification to GenLayer...";
 
@@ -54,7 +58,9 @@ window.verifyClaim = async function () {
 
         const receipt = await client.waitForTransactionReceipt({
             hash: transactionHash,
-            status: TransactionStatus.FINALIZED
+            status: TransactionStatus.FINALIZED,
+            interval: 5000,
+            retries: 60
         });
 
         if (
@@ -77,7 +83,7 @@ window.verifyClaim = async function () {
 
         if (!verifications || verifications.length === 0) {
             throw new Error(
-                "The transaction finalized, but no verification record was found."
+                "No verification record was found."
             );
         }
 
