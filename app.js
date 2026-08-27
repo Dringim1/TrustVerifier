@@ -107,3 +107,4 @@ window.verifyClaim = async function () {
             "Error: " + (error.message || error);
     }
 };
+document.getElementById("verifyButton").addEventListener("click", verifyClaim);
