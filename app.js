@@ -39,10 +39,6 @@ window.verifyClaim = async function () {
             provider: window.ethereum
         });
 
-        resultText.textContent = "Connecting to GenLayer StudioNet...";
-
-        await client.connect("studionet");
-
         resultText.textContent =
             "Submitting verification to GenLayer...";
 
