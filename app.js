@@ -1,8 +1,9 @@
 import { createClient } from "genlayer-js";
 import { studionet } from "genlayer-js/chains";
+import { TransactionStatus, ExecutionResult } from "genlayer-js/types";
 
 const CONTRACT_ADDRESS =
-    "0x451cD41BB4Bf2C03239E28ED458d320795BB02Ef";
+    "0x0829482B8be25A87805cE01c7488a9A48306a80E";
 
 window.verifyClaim = async function () {
     const claim = document.getElementById("claim").value.trim();
@@ -32,9 +33,6 @@ window.verifyClaim = async function () {
 
         const account = accounts[0];
 
-        resultText.textContent =
-            "Preparing GenLayer transaction...";
-
         const client = createClient({
             chain: studionet,
             account: account,
@@ -44,7 +42,7 @@ window.verifyClaim = async function () {
         resultText.textContent =
             "Submitting verification to GenLayer...";
 
-        const transaction = await client.writeContract({
+        const transactionHash = await client.writeContract({
             address: CONTRACT_ADDRESS,
             functionName: "verify_claim",
             args: [claim, source],
@@ -52,7 +50,53 @@ window.verifyClaim = async function () {
         });
 
         resultText.textContent =
-            "Verification submitted successfully: " + transaction;
+            "Verification submitted. Waiting for finalized consensus...";
+
+        const receipt = await client.waitForTransactionReceipt({
+            hash: transactionHash,
+            status: TransactionStatus.FINALIZED
+        });
+
+        if (
+            receipt.txExecutionResultName !==
+            ExecutionResult.FINISHED_WITH_RETURN
+        ) {
+            throw new Error(
+                "Verification transaction did not finish successfully."
+            );
+        }
+
+        resultText.textContent =
+            "Verification finalized. Retrieving the finalized verdict...";
+
+        const verifications = await client.readContract({
+            address: CONTRACT_ADDRESS,
+            functionName: "get_verifications",
+            args: []
+        });
+
+        if (!verifications || verifications.length === 0) {
+            throw new Error(
+                "The transaction finalized, but no verification record was found."
+            );
+        }
+
+        const verification =
+            verifications[verifications.length - 1];
+
+        resultText.innerHTML = `
+            <strong>Verification Finalized</strong><br><br>
+            <strong>Result:</strong> ${verification.result}<br>
+            <strong>Status:</strong> ${verification.status}<br>
+            <strong>Claim:</strong> ${verification.claim}<br>
+            <strong>Source:</strong>
+            <a href="${verification.source_url}" target="_blank">
+                ${verification.source_url}
+            </a><br>
+            <strong>Verification ID:</strong> ${verification.id}<br>
+            <strong>Verified At:</strong> ${verification.verified_at}<br><br>
+            <strong>Transaction:</strong> ${transactionHash}
+        `;
 
     } catch (error) {
         console.error(error);
